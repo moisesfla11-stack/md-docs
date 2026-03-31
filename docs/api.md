@@ -1,159 +1,45 @@
----
-id: api
-slug: /api
-title: API
----
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from PIL import Image
 
-### API Base URL
+# Configuração de dispositivo (GPU se disponível)
+device = "cuda" if torch.cuda.is_available() else "cpu"
+model_id = "vikhyatk/moondream2"
 
-```
-https://api.moondream.ai/v1/
-```
-All API requests use this base URL with skill-specific endpoints (`/query`, `/detect`, `/point`, `/caption`, `/segment`).
+# 1. Carregar Modelo e Tokenizer
+print("Carregando o Moondream2...")
+model = AutoModelForCausalLM.from_pretrained(
+    model_id, 
+    trust_remote_code=True, 
+    revision="2024-03-06" # Versão estável
+).to(device)
+tokenizer = AutoTokenizer.from_pretrained(model_id, revision="2024-03-06")
 
-import Tabs from '@theme/Tabs';
-import TabItem from '@theme/TabItem';
+def identificar_alteracoes(caminho_imagem, prompt):
+    image = Image.open(caminho_imagem)
+    enc_image = model.encode_image(image)
+    
+    # O Moondream responde bem a perguntas diretas sobre mudanças
+    # Exemplo: "What has changed in this image compared to a standard room?"
+    resposta = model.answer_question(enc_image, prompt, tokenizer)
+    
+    return resposta
 
-<Tabs>
-  <TabItem value="query" label="Query" default>
+def localizar_objetos(caminho_imagem, objeto):
+    image = Image.open(caminho_imagem)
+    enc_image = model.encode_image(image)
+    
+    # Retorna coordenadas [y_min, x_min, y_max, x_max]
+    detalhes = model.detect_object(enc_image, objeto, tokenizer)
+    
+    return detalhes
 
-**Visual Question Answering** - Ask natural language questions about images.
+# --- Exemplo de Uso ---
+img_path = "sua_imagem.jpg"
 
-```bash
-curl -X POST https://api.moondream.ai/v1/query \
-  -H 'Content-Type: application/json' \
-  -H 'X-Moondream-Auth: YOUR_API_KEY' \
-  -d '{
-    "image_url": "data:image/jpeg;base64,/9j//gAQTGF2YzYxLjE5LjEwMQD/2wBDAAg+Pkk+SVVVVVVVVWRdZGhoaGRkZGRoaGhwcHCDg4NwcHBoaHBwfHyDg4+Tj4eHg4eTk5ubm7q6srLZ2eD/////xABZAAADAQEBAQAAAAAAAAAAAAAABgcFCAECAQEAAAAAAAAAAAAAAAAAAAAAEAADAAMBAQEBAAAAAAAAAAAAAQIDIREEURKBEQEAAAAAAAAAAAAAAAAAAAAA/8AAEQgAGQAZAwESAAISAAMSAP/aAAwDAQACEQMRAD8A5/PQAAABirHyVS2mUip/Pm4/vQAih9ABuRUrVLqMEALVNead7/pFgAfc+d5NLSEEAAAA/9k=",
-    "question": "What is in this image?"
-  }'
-```
+# Pergunta descritiva
+print("Análise:", identificar_alteracoes(img_path, "Describe any anomalies or changes in this scene."))
 
-**Response:**
-```json
-{
-  "request_id": "2025-03-25_query_2025-03-25-21:00:39-715d03",
-  "answer": "The image is a grayscale depiction of a crescent moon against a black background. The moon is rendered in varying shades of gray, appearing as a smooth, curved shape with no visible craters or details."
-}
-```
-
-  </TabItem>
-  <TabItem value="detect" label="Detect">
-
-**Object Detection** - Identify and locate objects with bounding boxes.
-
-```bash
-curl -X POST https://api.moondream.ai/v1/detect \
-  -H 'Content-Type: application/json' \
-  -H 'X-Moondream-Auth: YOUR_API_KEY' \
-  -d '{
-    "image_url": "data:image/jpeg;base64,/9j//gAQTGF2YzYxLjE5LjEwMQD/2wBDAAg+Pkk+SVVVVVVVVWRdZGhoaGRkZGRoaGhwcHCDg4NwcHBoaHBwfHyDg4+Tj4eHg4eTk5ubm7q6srLZ2eD/////xABZAAADAQEBAQAAAAAAAAAAAAAABgcFCAECAQEAAAAAAAAAAAAAAAAAAAAAEAADAAMBAQEBAAAAAAAAAAAAAQIDIREEURKBEQEAAAAAAAAAAAAAAAAAAAAA/8AAEQgAGQAZAwESAAISAAMSAP/aAAwDAQACEQMRAD8A5/PQAAABirHyVS2mUip/Pm4/vQAih9ABuRUrVLqMEALVNead7/pFgAfc+d5NLSEEAAAA/9k=",
-    "object": "moon"
-  }'
-```
-
-**Response:**
-```json
-{
-  "request_id": "2025-03-25_detect_2025-03-25-21:00:39-715d03",
-  "objects": [
-    {
-      "x_min": 0.2,
-      "y_min": 0.3,
-      "x_max": 0.6,
-      "y_max": 0.8
-    }
-  ]
-}
-```
-
-  </TabItem>
-  <TabItem value="point" label="Point">
-
-**Object Pointing** - Get precise center coordinates for objects.
-
-```bash
-curl -X POST https://api.moondream.ai/v1/point \
-  -H 'Content-Type: application/json' \
-  -H 'X-Moondream-Auth: YOUR_API_KEY' \
-  -d '{
-    "image_url": "data:image/jpeg;base64,/9j//gAQTGF2YzYxLjE5LjEwMQD/2wBDAAg+Pkk+SVVVVVVVVWRdZGhoaGRkZGRoaGhwcHCDg4NwcHBoaHBwfHyDg4+Tj4eHg4eTk5ubm7q6srLZ2eD/////xABZAAADAQEBAQAAAAAAAAAAAAAABgcFCAECAQEAAAAAAAAAAAAAAAAAAAAAEAADAAMBAQEBAAAAAAAAAAAAAQIDIREEURKBEQEAAAAAAAAAAAAAAAAAAAAA/8AAEQgAGQAZAwESAAISAAMSAP/aAAwDAQACEQMRAD8A5/PQAAABirHyVS2mUip/Pm4/vQAih9ABuRUrVLqMEALVNead7/pFgAfc+d5NLSEEAAAA/9k=",
-    "object": "moon"
-  }'
-```
-
-**Response:**
-```json
-{
-  "request_id": "2025-03-25_point_2025-03-25-21:00:39-715d03",
-  "points": [
-    {
-      "x": 0.65,
-      "y": 0.42
-    }
-  ]
-}
-```
-
-  </TabItem>
-  <TabItem value="caption" label="Caption">
-
-**Image Captioning** - Generate natural language descriptions of images.
-
-```bash
-curl -X POST https://api.moondream.ai/v1/caption \
-  -H 'Content-Type: application/json' \
-  -H 'X-Moondream-Auth: YOUR_API_KEY' \
-  -d '{
-    "image_url": "data:image/jpeg;base64,/9j//gAQTGF2YzYxLjE5LjEwMQD/2wBDAAg+Pkk+SVVVVVVVVWRdZGhoaGRkZGRoaGhwcHCDg4NwcHBoaHBwfHyDg4+Tj4eHg4eTk5ubm7q6srLZ2eD/////xABZAAADAQEBAQAAAAAAAAAAAAAABgcFCAECAQEAAAAAAAAAAAAAAAAAAAAAEAADAAMBAQEBAAAAAAAAAAAAAQIDIREEURKBEQEAAAAAAAAAAAAAAAAAAAAA/8AAEQgAGQAZAwESAAISAAMSAP/aAAwDAQACEQMRAD8A5/PQAAABirHyVS2mUip/Pm4/vQAih9ABuRUrVLqMEALVNead7/pFgAfc+d5NLSEEAAAA/9k=",
-    "length": "normal",
-    "stream": false
-  }'
-```
-
-**Response:**
-```json
-{
-  "caption": "A crescent moon shape is centered against a solid black background. The crescent is oriented with its convex side facing right and its concave side facing left. The image is monochromatic, with shades of gray and white. No other objects, patterns, or text are visible.",
-  "metrics": {
-    "input_tokens": 735,
-    "output_tokens": 45,
-    "prefill_time_ms": 43.51004003547132,
-    "decode_time_ms": 415.3184471651912,
-    "ttft_ms": 81.97528193704784
-  },
-  "finish_reason": "stop"
-}
-```
-
-  </TabItem>
-  <TabItem value="segment" label="Segment">
-
-**Image Segmentation** - Generate SVG path masks for objects.
-
-```bash
-curl -X POST https://api.moondream.ai/v1/segment \
-  -H 'Content-Type: application/json' \
-  -H 'X-Moondream-Auth: YOUR_API_KEY' \
-  -d '{
-    "image_url": "data:image/jpeg;base64,...",
-    "object": "cat"
-  }'
-```
-
-**Response:**
-```json
-{
-  "path": "M 0 0.76 L 0 0.32 L 0.03 0.31 C 0.04 0.30 0.09 0.28 0.12 0.27...",
-  "bbox": {
-    "x_min": 0.0002,
-    "y_min": 0.0039,
-    "x_max": 0.7838,
-    "y_max": 0.9971
-  }
-}
-```
-
-  </TabItem>
-</Tabs>
-
+# Localização de um ponto específico de alteração (ex: um buraco ou mancha)
+pontos = localizar_objetos(img_path, "area with alteration")
+print(f"Coordenadas da alteração: {pontos}")
